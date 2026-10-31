@@ -1,0 +1,12 @@
+services:
+  onedrive-google-sync:
+    build: .
+    image: ghcr.io/jamespwright/onedrive-google-sync:latest
+    container_name: onedrive-google-sync
+    restart: "no"    # syncs once and exits; start it again to resync
+    user: "99:100"   # Unraid's nobody:users
+    environment:
+      - TZ=Etc/UTC
+      - LOG_LEVEL=INFO
+    volumes:
+      - /mnt/user/appdata/onedrive-google-sync:/config

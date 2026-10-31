@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>onedrive-google-sync</Name>
+  <Repository>ghcr.io/jamespwright/onedrive-google-sync:latest</Repository>
+  <Registry>https://github.com/jamespwright/onedrive-google-sync/pkgs/container/onedrive-google-sync</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Overview>One-way sync of OneDrive albums (from one or more Microsoft accounts) into Google Photos albums, e.g. to feed a Nest Hub photo frame. Runs one sync and exits; start it again (e.g. docker start -a onedrive-google-sync from a User Script) to resync. Sign in each account once from the Unraid terminal - see the README.</Overview>
+  <Category>Backup: Tools:</Category>
+  <ExtraParams>--user 99:100</ExtraParams>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/onedrive-google-sync" Mode="rw" Description="config.yaml, tokens and sync state" Type="Path" Display="always" Required="true">/mnt/user/appdata/onedrive-google-sync</Config>
+  <Config Name="Log level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="DEBUG, INFO, WARNING" Type="Variable" Display="advanced" Required="false">INFO</Config>
+  <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="Timezone for log timestamps" Type="Variable" Display="advanced" Required="false">Etc/UTC</Config>
+</Container>

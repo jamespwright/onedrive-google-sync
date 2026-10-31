@@ -1,0 +1,38 @@
+# Copy to /config/config.yaml (on Unraid: /mnt/user/appdata/onedrive-google-sync/config.yaml).
+
+interval_minutes: 30        # only used with the "run" command (loop); default is sync once and exit
+include_videos: false       # Nest Hub photo frames don't need videos
+allow_empty_source: false   # if a OneDrive album comes back empty, don't strip the Google album
+
+onedrive:
+  # Application (client) ID of your Entra ID app registration (see README).
+  client_id: "00000000-0000-0000-0000-000000000000"
+  # scopes: [Files.Read]    # use Files.Read.All if albums contain photos shared from other people
+
+google:
+  # OAuth "Desktop app" client JSON downloaded from Google Cloud Console, relative to /config.
+  client_secret_file: google_client_secret.json
+
+# Each target is one Google Photos album. It is created by this tool on first run
+# (the Library API can only add photos to albums the app created itself).
+# Its contents are the union of all its sources, so several OneDrive albums, from
+# any number of OneDrive accounts, can feed one Google album.
+#
+# Account names are labels you choose. Sign each one in once:
+#   docker run --rm -it --user 99:100 -v /mnt/user/appdata/onedrive-google-sync:/config ghcr.io/jamespwright/onedrive-google-sync auth-onedrive james
+#   docker run --rm -it --user 99:100 -v /mnt/user/appdata/onedrive-google-sync:/config ghcr.io/jamespwright/onedrive-google-sync auth-google default
+targets:
+  - google_account: default
+    google_album: "Nest Hub Frame"
+    sources:
+      - onedrive_account: james
+        album: "Frame"            # album name, matched case-insensitively
+      - onedrive_account: partner
+        album: "Favourites"
+        # album_id: "ABC123!456"  # use instead of album if two albums share a name
+
+  # - google_account: default
+  #   google_album: "Kitchen Display"
+  #   sources:
+  #     - onedrive_account: james
+  #       album: "Kids"
