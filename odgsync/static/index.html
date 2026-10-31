@@ -53,6 +53,8 @@
   .acct { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
   .acct:first-of-type { border-top: 0; }
   .acct .name { font-weight: 600; min-width: 90px; }
+  .acct .who { min-width: 0; overflow-wrap: anywhere; }
+  .acct .acts { margin-left: auto; display: flex; gap: 8px; }
   .pill { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; }
   .notice { padding: 10px 12px; border-radius: 6px; background: var(--code); margin-top: 10px; overflow-wrap: anywhere; }
   .code { font: 600 20px ui-monospace, Consolas, monospace; letter-spacing: .08em; }
@@ -105,7 +107,7 @@
     <h2>OneDrive accounts</h2>
     <div id="odAccounts"></div>
     <div class="row" style="margin-top: 10px">
-      <input type="text" id="odNew" placeholder="New account name, e.g. partner" style="max-width: 260px">
+      <input type="text" id="odNew" placeholder="Their email or a name, e.g. partner" style="max-width: 300px">
       <button id="odAdd">Sign in</button>
     </div>
     <div id="odNotice"></div>
@@ -116,7 +118,7 @@
     <div id="gClient" class="muted" style="margin-bottom: 8px"></div>
     <div id="gAccounts"></div>
     <div class="row" style="margin-top: 10px">
-      <input type="text" id="gNew" placeholder="Account name, e.g. default" style="max-width: 260px">
+      <input type="text" id="gNew" placeholder="Email or a name, e.g. default" style="max-width: 300px">
       <button id="gAdd">Sign in</button>
     </div>
     <div id="gNotice"></div>
@@ -314,11 +316,12 @@ async function refreshAccounts() {
     const s = a.signin;
     let status;
     if (s && s.state === "pending") status = el("span", { class: "pill warn" }, "waiting for code");
-    else if (a.user) status = el("span", { class: "ok" }, a.user);
+    else if (a.user) status = el("span", { class: "ok who" }, a.user);
     else status = el("span", { class: "pill bad" }, "not signed in");
-    return el("div", { class: "acct" }, el("span", { class: "name" }, a.name), status, el("span", { class: "grow" }),
-      el("button", { class: "small", onclick: () => odSignin(a.name) }, a.user ? "Re-sign in" : "Sign in"),
-      a.user ? el("button", { class: "small danger", onclick: () => removeAccount("onedrive", a) }, "Sign out") : null);
+    return el("div", { class: "acct" }, el("span", { class: "name" }, a.name), status,
+      el("span", { class: "acts" },
+        el("button", { class: "small", onclick: () => odSignin(a.name) }, a.user ? "Re-sign in" : "Sign in"),
+        a.user ? el("button", { class: "small danger", onclick: () => removeAccount("onedrive", a) }, "Sign out") : null));
   }));
   if (!accounts.onedrive.length) od.replaceChildren(el("p", { class: "muted" }, "No OneDrive accounts yet."));
 
@@ -341,9 +344,9 @@ async function refreshAccounts() {
   $("gAccounts").replaceChildren(...accounts.google.map(a => el("div", { class: "acct" },
     el("span", { class: "name" }, a.name),
     a.signed_in ? el("span", { class: "ok" }, "signed in") : el("span", { class: "pill bad" }, "not signed in"),
-    el("span", { class: "grow" }),
-    el("button", { class: "small", onclick: () => gSignin(a.name) }, a.signed_in ? "Re-sign in" : "Sign in"),
-    a.signed_in ? el("button", { class: "small danger", onclick: () => removeAccount("google", a) }, "Sign out") : null)));
+    el("span", { class: "acts" },
+      el("button", { class: "small", onclick: () => gSignin(a.name) }, a.signed_in ? "Re-sign in" : "Sign in"),
+      a.signed_in ? el("button", { class: "small danger", onclick: () => removeAccount("google", a) }, "Sign out") : null))));
   if (!accounts.google.length) $("gAccounts").replaceChildren(el("p", { class: "muted" }, "No Google accounts yet."));
   // Only redraw the album form when the account dropdowns change, so polling doesn't steal focus.
   const names = JSON.stringify([accounts.onedrive.map(a => a.name), accounts.google.map(a => a.name)]);
@@ -361,10 +364,14 @@ async function odSignin(name) {
   catch (e) { odError = e.message.startsWith("Account names") ? NAME_HINT : e.message; }
   refreshAccounts();
 }
+// People naturally type an email here; turn it (or any name) into a safe label.
+function toName(text) {
+  return text.trim().split("@")[0].replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 40);
+}
 $("odAdd").onclick = () => {
-  const n = $("odNew").value.trim();
+  const n = toName($("odNew").value);
   if (n) return odSignin(n);
-  odError = "Type a name for the new account first, e.g. partner.";
+  odError = "Type a name or email for the new account first.";
   refreshAccounts();
 };
 $("odNew").addEventListener("keydown", (e) => { if (e.key === "Enter") $("odAdd").click(); });
@@ -388,9 +395,9 @@ async function gSignin(name) {
   refreshAccounts();
 }
 $("gAdd").onclick = () => {
-  const n = $("gNew").value.trim();
+  const n = toName($("gNew").value);
   if (n) return gSignin(n);
-  $("gNotice").replaceChildren(el("div", { class: "notice bad" }, "Type a name for the account first, e.g. default."));
+  $("gNotice").replaceChildren(el("div", { class: "notice bad" }, "Type a name or email for the account first."));
 };
 $("gNew").addEventListener("keydown", (e) => { if (e.key === "Enter") $("gAdd").click(); });
 
