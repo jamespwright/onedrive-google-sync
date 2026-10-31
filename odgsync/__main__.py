@@ -4,7 +4,6 @@ import os
 import shutil
 import signal
 import sys
-import threading
 
 from . import config as cfgmod
 from .gphotos import GoogleAccount
@@ -37,16 +36,16 @@ def sync_once(cfg: cfgmod.Config) -> bool:
         state.close()
 
 
-def cmd_run(_args):
-    stop = threading.Event()
+def cmd_serve(_args):
+    from .web import serve
+
+    service = serve(int(os.environ.get("WEB_PORT", "8765")), os.environ.get("WEB_PASSWORD") or None)
     # Python as PID 1 ignores SIGTERM unless it has a handler, which makes `docker stop` hang.
-    signal.signal(signal.SIGTERM, lambda *_: stop.set())
-    signal.signal(signal.SIGINT, lambda *_: stop.set())
-    while not stop.is_set():
-        cfg = load_config()  # re-read each cycle so config edits apply without a restart
-        sync_once(cfg)
-        log.info("next sync in %d minutes", cfg.interval_minutes)
-        stop.wait(cfg.interval_minutes * 60)
+    signal.signal(signal.SIGTERM, lambda *_: service.stop.set())
+    signal.signal(signal.SIGINT, lambda *_: service.stop.set())
+    service.stop.wait()
+    service.wake.set()
+    service.server.shutdown()
     log.info("stopping")
 
 
@@ -86,8 +85,8 @@ def main():
 
     parser = argparse.ArgumentParser(prog="odgsync", description="Sync OneDrive albums to Google Photos albums")
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("run", help="sync on a loop every interval_minutes").set_defaults(func=cmd_run)
-    sub.add_parser("sync", help="sync once and exit (default)").set_defaults(func=cmd_sync)
+    sub.add_parser("serve", help="web UI plus daily scheduled sync (default)").set_defaults(func=cmd_serve)
+    sub.add_parser("sync", help="sync once and exit").set_defaults(func=cmd_sync)
     for name, func, help_ in (
         ("auth-onedrive", cmd_auth_onedrive, "sign in a OneDrive account (device code)"),
         ("auth-google", cmd_auth_google, "sign in a Google account"),
@@ -98,7 +97,7 @@ def main():
         p.set_defaults(func=func)
 
     args = parser.parse_args()
-    (getattr(args, "func", None) or cmd_sync)(args)
+    (getattr(args, "func", None) or cmd_serve)(args)
 
 
 if __name__ == "__main__":

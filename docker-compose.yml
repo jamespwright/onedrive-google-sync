@@ -3,10 +3,13 @@ services:
     build: .
     image: ghcr.io/jamespwright/onedrive-google-sync:latest
     container_name: onedrive-google-sync
-    restart: "no"    # syncs once and exits; start it again to resync
+    restart: unless-stopped
     user: "99:100"   # Unraid's nobody:users
+    ports:
+      - "8765:8765"  # web UI
     environment:
-      - TZ=Etc/UTC
+      - TZ=Etc/UTC   # the daily sync time is in this time zone
       - LOG_LEVEL=INFO
+      # - WEB_PASSWORD=change-me
     volumes:
       - /mnt/user/appdata/onedrive-google-sync:/config

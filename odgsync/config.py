@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass
 
 import yaml
@@ -7,6 +8,7 @@ CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.yaml")
 TOKEN_DIR = os.path.join(CONFIG_DIR, "tokens")
 STATE_PATH = os.path.join(CONFIG_DIR, "state.db")
+TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 
 class ConfigError(ValueError):
@@ -33,7 +35,8 @@ class Target:
 
 @dataclass
 class Config:
-    interval_minutes: int
+    schedule_enabled: bool
+    schedule_time: str  # "HH:MM", daily, in the container's local time (TZ)
     include_videos: bool
     allow_empty_source: bool
     onedrive_client_id: str
@@ -42,16 +45,36 @@ class Config:
     targets: list[Target]
 
 
+def read_raw(path: str = CONFIG_PATH) -> dict:
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def save_raw(raw: dict, path: str = CONFIG_PATH):
+    parse(raw, require_targets=False)  # refuse to write a config that won't load
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        yaml.safe_dump(raw, f, sort_keys=False, allow_unicode=True)
+    os.replace(tmp, path)
+
+
 def load(path: str = CONFIG_PATH, require_targets: bool = True) -> Config:
     if not os.path.exists(path):
         raise ConfigError(f"No config at {path}. Copy config.example.yaml there and edit it.")
-    with open(path, encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
+    return parse(read_raw(path), require_targets)
 
+
+def parse(raw: dict, require_targets: bool = True) -> Config:
     onedrive = raw.get("onedrive") or {}
     google = raw.get("google") or {}
+    schedule = raw.get("schedule") or {}
     if not onedrive.get("client_id"):
         raise ConfigError("onedrive.client_id is required")
+    schedule_time = str(schedule.get("time", "03:00"))
+    if not TIME_RE.match(schedule_time):
+        raise ConfigError(f"schedule.time must be HH:MM, not {schedule_time!r}")
 
     targets = []
     for i, t in enumerate(raw.get("targets") or []):
@@ -70,7 +93,8 @@ def load(path: str = CONFIG_PATH, require_targets: bool = True) -> Config:
 
     secret = google.get("client_secret_file", "google_client_secret.json")
     return Config(
-        interval_minutes=int(os.environ.get("SYNC_INTERVAL_MINUTES") or raw.get("interval_minutes", 30)),
+        schedule_enabled=bool(schedule.get("enabled", True)),
+        schedule_time=schedule_time,
         include_videos=bool(raw.get("include_videos", False)),
         allow_empty_source=bool(raw.get("allow_empty_source", False)),
         onedrive_client_id=onedrive["client_id"],

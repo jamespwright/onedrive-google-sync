@@ -1,7 +1,8 @@
 # onedrive-google-sync
 
-A small run-once container that brings Google Photos albums in step with OneDrive albums, for
-example to feed a Nest Hub photo frame from photos you curate in OneDrive.
+A small container that brings Google Photos albums in step with OneDrive albums, for
+example to feed a Nest Hub photo frame from photos you curate in OneDrive. It syncs once a
+day at a time you choose, and has a web UI for settings, account sign-in, and a **Sync now** button.
 
 - **One-way**: OneDrive → Google. Nothing in OneDrive is ever modified.
 - **Multiple targets**: each target is one Google Photos album.
@@ -12,7 +13,8 @@ example to feed a Nest Hub photo frame from photos you curate in OneDrive.
 
 ## How it works
 
-Each time the container starts it does one sync, then exits:
+The container runs all the time, serving the web UI on port 8765. Each sync (daily, or when you
+click **Sync now**):
 
 1. Lists each source album through Microsoft Graph (OneDrive albums are *bundles*
    in Graph; they reference your existing files, so nothing is copied in OneDrive).
@@ -21,7 +23,7 @@ Each time the container starts it does one sync, then exits:
    - uploads new photos (`/v1/uploads` then `mediaItems:batchCreate`, 50 per call);
    - re-adds photos it uploaded before, without uploading them again;
    - removes photos that left every source album (`batchRemoveMediaItems`).
-4. Exits with code 0 if every target synced, or 1 if any failed.
+4. Records whether every target synced; the result and log show in the web UI.
 
 If a source can't be read, that target is skipped for the run. If a source album
 comes back empty, removals are skipped too (set `allow_empty_source: true` to allow
@@ -69,97 +71,58 @@ The same app serves every OneDrive account. Each account just signs in separatel
 ### 3. Install on Unraid
 
 The GitHub workflow builds the image to `ghcr.io/jamespwright/onedrive-google-sync` on
-every push to `main`. Make the package public in GitHub (or `docker login ghcr.io` on
-Unraid). Then either:
+every push to `main`. Then either:
 
 - copy `unraid/onedrive-google-sync.xml` to `/boot/config/plugins/dockerMan/templates-user/`
   and add the container from **Docker → Add Container → Template**, or
 - use `docker-compose.yml` with the Compose Manager plugin.
 
-Or build it on the server and create the container directly. If you do, use
-`onedrive-google-sync:latest` in place of the ghcr image name below:
-
-```sh
-git clone https://github.com/jamespwright/onedrive-google-sync /mnt/user/appdata/onedrive-google-sync-src
-docker build -t onedrive-google-sync:latest /mnt/user/appdata/onedrive-google-sync-src
-docker create --name onedrive-google-sync --user 99:100 --restart no \
-  -v /mnt/user/appdata/onedrive-google-sync:/config \
-  -v /etc/localtime:/etc/localtime:ro \
-  onedrive-google-sync:latest
-```
-
 Config lives in `/mnt/user/appdata/onedrive-google-sync`. The container runs as
 `99:100` (nobody:users), so that folder should be owned by them.
 
-Because the container exits after each sync, the commands below start a temporary
-container for each step. For brevity, `ODGS` stands for:
+### 4. Configure in the web UI
+
+Open `http://<server>:8765/` (the **WebUI** item on the container's icon in Unraid):
+
+1. **Options**: paste the Microsoft app's client ID and click **Save settings**.
+2. **Google accounts → Google OAuth client**: paste or pick the client JSON and save it.
+3. **OneDrive accounts**: enter a name (e.g. `james`) and click **Sign in**. Open the link
+   shown and enter the code while signed in as that person. Repeat for each account.
+4. **Google accounts**: enter a name (e.g. `default`) and click **Sign in**. Approve access,
+   then copy the `http://localhost:8080/?…code=…` address your browser fails to load and
+   paste it into the box.
+5. **Albums**: add a Google album, pick its OneDrive account(s) and album(s) (the album box
+   lists that account's albums), and save.
+6. **Schedule**: pick the daily time and save. It's in the container's time zone, which
+   Unraid sets from **Settings → Date and Time**; the page shows which zone that is.
+7. Click **Sync now** to check it all works.
+
+Set **Web UI password** in the container settings (`WEB_PASSWORD`) if others on your network
+shouldn't reach the page: it can sign accounts in and out. Any username works.
+
+## Command line
+
+Everything in the UI can also be done from the terminal, and `config.yaml` can be edited by
+hand (the scheduler re-reads it within 30 seconds; saving from the UI drops its comments).
 
 ```sh
-ODGS="docker run --rm -it --user 99:100 -v /mnt/user/appdata/onedrive-google-sync:/config ghcr.io/jamespwright/onedrive-google-sync"
+docker exec -it onedrive-google-sync python -m odgsync auth-onedrive james
 ```
-
-### 4. Configure and sign in
-
-1. Copy `config.example.yaml` to `/mnt/user/appdata/onedrive-google-sync/config.yaml`.
-   Fill in `onedrive.client_id` and leave the targets for now. (If you start the
-   container with no config, it writes the example there for you.)
-2. Sign in each OneDrive account. Use the names you'll reference in `config.yaml`:
-
-   ```sh
-   $ODGS auth-onedrive james
-   $ODGS auth-onedrive partner
-   ```
-
-   Each one prints a code. Enter it at <https://microsoft.com/devicelogin> while signed
-   in as that person.
-3. **Check that your albums are visible to Graph.** It's unconfirmed whether albums made in
-   the newer OneDrive Photos experience still show up as bundles, so do this before going
-   further:
-
-   ```sh
-   $ODGS list-albums james
-   ```
-
-4. Sign in Google:
-
-   ```sh
-   $ODGS auth-google default
-   ```
-
-   Open the printed URL, approve access, then copy the `http://localhost:8080/?code=…`
-   URL your browser fails to load and paste it back into the terminal.
-5. Add your `targets` to `config.yaml`, then run one sync to check it:
-
-   ```sh
-   docker start -a onedrive-google-sync
-   ```
-
-## Running a sync
-
-Start the container whenever you want to sync; it exits when done. From your existing
-bash script (e.g. after your OneDrive sync step):
-
-```sh
-if docker start -a onedrive-google-sync; then
-  echo "Google Photos sync OK"
-else
-  echo "Google Photos sync failed (see: docker logs onedrive-google-sync)" >&2
-fi
-```
-
-`-a` attaches to the output and waits, so the script blocks until the sync finishes and
-gets its exit code. Make sure the container's **Autostart** is off in Unraid if you only
-want it to run from your script (or leave it on to also sync at every array start).
-
-## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `sync` (default) | Sync once and exit (non-zero exit if any target failed) |
-| `run` | Keep syncing on a loop every `interval_minutes` |
+| `serve` (default) | Web UI plus the daily scheduled sync |
+| `sync` | Sync once and exit (non-zero exit if any target failed) |
 | `auth-onedrive NAME` | Device-code sign-in for a OneDrive account |
 | `auth-google NAME` | Sign in a Google account |
 | `list-albums NAME` | List a OneDrive account's albums with their IDs |
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `WEB_PORT` | `8765` | Web UI port inside the container |
+| `WEB_PASSWORD` | (none) | Password for the web UI |
+| `TZ` | UTC | Time zone of the daily sync time |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` |
 
 ## Files in /config
 
@@ -170,6 +133,7 @@ want it to run from your script (or leave it on to also sync at every array star
 | `tokens/onedrive_NAME.json` | MSAL token cache per OneDrive account |
 | `tokens/google_NAME.json` | Google refresh token per account |
 | `state.db` | SQLite: Google album IDs, uploaded media IDs, album membership |
+| `status.json` | Result of the last sync, shown in the web UI |
 
 Token files are secrets; keep the appdata folder private. Deleting `state.db` makes
 the tool create a fresh Google album and upload everything again.
@@ -180,5 +144,5 @@ the tool create a fresh Google album and upload everything again.
   ID. To push an edit, take the photo out of the album, wait for a sync, then add it back.
 - If you delete the Google album by hand, the next sync creates a new one, and you'll
   need to reselect it on the Nest Hub.
-- Renaming `google_album` in the config also creates a new album, because albums are
+- Renaming a Google album in the settings also creates a new album, because albums are
   matched by account and title.

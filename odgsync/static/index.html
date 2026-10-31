@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneDrive → Google Photos</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #677085; --line: #dfe3ea;
+    --accent: #2563eb; --accent-text: #fff; --ok: #15803d; --bad: #b91c1c; --warn: #a16207;
+    --input: #fff; --code: #f0f2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b1f27; --text: #e5e8ee; --muted: #9aa3b5; --line: #2d333f;
+      --accent: #3b82f6; --ok: #4ade80; --bad: #f87171; --warn: #facc15; --input: #12151b; --code: #0d1015;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1 1 200px; min-width: 0; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=time], select, textarea {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--input); color: var(--text); font: inherit;
+  }
+  textarea { font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 80px; }
+  .check { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; }
+  .check input { margin-top: 3px; }
+  .check span small { display: block; color: var(--muted); }
+  button {
+    padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--card);
+    color: var(--text); font: inherit; cursor: pointer; white-space: nowrap;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.danger { color: var(--bad); }
+  button.small { padding: 3px 9px; font-size: 13px; }
+  button:disabled { opacity: .55; cursor: default; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .stat .v { font-size: 15px; font-weight: 600; margin-top: 2px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .muted { color: var(--muted); }
+  .target { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .source { display: grid; grid-template-columns: 1fr 2fr 1.3fr auto; gap: 8px; align-items: end; margin-top: 8px; }
+  @media (max-width: 640px) { .source { grid-template-columns: 1fr 1fr; } }
+  .acct { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .acct:first-of-type { border-top: 0; }
+  .acct .name { font-weight: 600; min-width: 90px; }
+  .pill { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; }
+  .notice { padding: 10px 12px; border-radius: 6px; background: var(--code); margin-top: 10px; overflow-wrap: anywhere; }
+  .code { font: 600 20px ui-monospace, Consolas, monospace; letter-spacing: .08em; }
+  pre.log { background: var(--code); border-radius: 6px; padding: 10px; max-height: 360px; overflow: auto;
+            font-size: 12px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .bar { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; display: flex; gap: 12px; align-items: center; }
+  #toast { min-height: 1.4em; }
+  a { color: var(--accent); }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent;
+          border-radius: 50%; animation: s .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<main>
+  <h1>OneDrive → Google Photos</h1>
+  <p class="sub">Keeps Google Photos albums in step with OneDrive albums.</p>
+
+  <section class="card">
+    <div class="row" style="justify-content: space-between; margin-bottom: 12px">
+      <h2 style="margin: 0">Status</h2>
+      <button id="syncBtn" class="primary">Sync now</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">State</div><div class="v" id="stState">…</div></div>
+      <div class="stat"><div class="k">Last sync</div><div class="v" id="stLast">…</div></div>
+      <div class="stat"><div class="k">Next sync</div><div class="v" id="stNext">…</div></div>
+    </div>
+    <div id="stTargets" class="muted"></div>
+  </section>
+
+  <section class="card">
+    <h2>Schedule</h2>
+    <div class="row">
+      <label class="check" style="margin: 0"><input type="checkbox" id="schEnabled"><span>Sync every day at</span></label>
+      <input type="time" id="schTime" style="width: 130px">
+      <span class="muted" id="tzNote"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Albums</h2>
+    <p class="muted" style="margin-top: -6px">Each Google album gets everything in its OneDrive source albums. The tool creates the
+      Google album itself; Google won't let it add to one you made by hand.</p>
+    <div id="targets"></div>
+    <button id="addTarget">+ Add Google album</button>
+  </section>
+
+  <section class="card">
+    <h2>OneDrive accounts</h2>
+    <div id="odAccounts"></div>
+    <div class="row" style="margin-top: 10px">
+      <input type="text" id="odNew" placeholder="New account name, e.g. partner" style="max-width: 260px">
+      <button id="odAdd">Sign in</button>
+    </div>
+    <div id="odNotice"></div>
+  </section>
+
+  <section class="card">
+    <h2>Google accounts</h2>
+    <div id="gClient" class="muted" style="margin-bottom: 8px"></div>
+    <div id="gAccounts"></div>
+    <div class="row" style="margin-top: 10px">
+      <input type="text" id="gNew" placeholder="Account name, e.g. default" style="max-width: 260px">
+      <button id="gAdd">Sign in</button>
+    </div>
+    <div id="gNotice"></div>
+    <details style="margin-top: 14px">
+      <summary>Google OAuth client</summary>
+      <p class="muted">Paste the Desktop app client JSON downloaded from Google Cloud Console.</p>
+      <textarea id="gClientJson" placeholder='{"installed": {"client_id": "...", ...}}'></textarea>
+      <div class="row" style="margin-top: 8px">
+        <input type="file" id="gClientFile" accept=".json,application/json">
+        <button id="gClientSave">Save client</button>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Options</h2>
+    <label class="check"><input type="checkbox" id="optVideos"><span>Include videos<small>Photo frames usually don't need them.</small></span></label>
+    <label class="check"><input type="checkbox" id="optEmpty"><span>Allow empty source albums<small>Off: if a OneDrive album comes back empty, nothing is removed from Google that run.</small></span></label>
+    <div class="row" style="margin-top: 10px">
+      <div class="grow"><label for="optClientId">Microsoft app (client) ID</label><input type="text" id="optClientId"></div>
+      <div class="grow"><label for="optScopes">Microsoft Graph scopes</label><input type="text" id="optScopes" placeholder="Files.Read"></div>
+    </div>
+  </section>
+
+  <div class="bar">
+    <button id="saveBtn" class="primary">Save settings</button>
+    <span id="toast"></span>
+  </div>
+
+  <section class="card">
+    <h2>Log</h2>
+    <pre class="log" id="log"></pre>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let cfg = null, accounts = { onedrive: [], google: [] }, dirty = false;
+const albumCache = {};
+
+async function api(path, body) {
+  const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-ODGS": "1" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+function el(tag, attrs = {}, ...children) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "class") e.className = v;
+    else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined) e.append(c);
+  return e;
+}
+
+function toast(msg, kind = "") { const t = $("toast"); t.className = kind; t.textContent = msg; }
+function markDirty() { dirty = true; toast("Unsaved changes", "warn"); }
+
+function fmtTime(s) {
+  if (!s) return "—";
+  const d = new Date(s);
+  const today = new Date(); const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1);
+  const t = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === today.toDateString()) return `Today ${t}`;
+  if (d.toDateString() === tomorrow.toDateString()) return `Tomorrow ${t}`;
+  return d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+// ---------- status ----------
+let pollTimer;
+async function refreshStatus() {
+  clearTimeout(pollTimer);
+  try {
+    const s = await api("/api/status");
+    const btn = $("syncBtn");
+    if (s.running) {
+      $("stState").innerHTML = '<span class="spin"></span>Syncing'; btn.disabled = true; btn.textContent = "Syncing…";
+    } else {
+      $("stState").textContent = "Idle"; btn.disabled = false; btn.textContent = "Sync now";
+    }
+    const l = s.last || {};
+    $("stLast").replaceChildren(...(l.finished
+      ? [el("span", { class: l.ok ? "ok" : "bad" }, l.ok ? "✓ " : "✗ "), fmtTime(l.finished), " ", el("span", { class: "muted" }, `(${l.reason})`)]
+      : ["Never"]));
+    $("stNext").textContent = s.next_run ? fmtTime(s.next_run) : "Not scheduled";
+    $("tzNote").textContent = `server time (${s.timezone})`;
+    $("stTargets").replaceChildren(...s.targets.map(t => el("div", {}, `${t.google_album}: `,
+      t.synced === null ? "not synced yet" : `${t.synced} photo${t.synced === 1 ? "" : "s"} in the Google album`)));
+    const log = $("log"); const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
+    log.textContent = s.logs.join("\n") || "No log lines yet.";
+    if (atBottom) log.scrollTop = log.scrollHeight;
+    pollTimer = setTimeout(refreshStatus, s.running ? 2000 : 15000);
+  } catch (e) {
+    $("stState").innerHTML = `<span class="bad">Unreachable</span>`;
+    pollTimer = setTimeout(refreshStatus, 10000);
+  }
+}
+$("syncBtn").onclick = async () => {
+  if (dirty && !confirm("You have unsaved settings. Sync with the saved settings anyway?")) return;
+  try { await api("/api/sync", {}); } catch (e) { toast(e.message, "bad"); }
+  refreshStatus();
+};
+
+// ---------- settings ----------
+function renderSettings() {
+  $("schEnabled").checked = cfg.schedule.enabled;
+  $("schTime").value = cfg.schedule.time.padStart(5, "0");
+  $("optVideos").checked = cfg.include_videos;
+  $("optEmpty").checked = cfg.allow_empty_source;
+  $("optClientId").value = cfg.onedrive.client_id || "";
+  $("optScopes").value = (cfg.onedrive.scopes || []).join(" ");
+  renderTargets();
+}
+
+function accountSelect(list, value, onchange) {
+  const names = list.map(a => a.name);
+  if (value && !names.includes(value)) names.push(value);
+  return el("select", { onchange: (e) => { onchange(e.target.value); markDirty(); } },
+    names.length ? null : el("option", { value: "" }, "— sign in an account first —"),
+    names.map(n => el("option", { value: n, selected: n === value }, n)));
+}
+
+async function loadAlbums(account, datalist) {
+  if (!account) return;
+  if (!albumCache[account]) {
+    albumCache[account] = api(`/api/onedrive/albums?account=${encodeURIComponent(account)}`).catch(e => { delete albumCache[account]; toast(e.message, "bad"); return []; });
+  }
+  const albums = await albumCache[account];
+  datalist.replaceChildren(...albums.map(a => el("option", { value: a.name }, `${a.count ?? "?"} items`)));
+}
+
+function renderTargets() {
+  const box = $("targets");
+  box.replaceChildren(...cfg.targets.map((t, ti) => {
+    const sources = t.sources.map((s, si) => {
+      const listId = `albums-${ti}-${si}`;
+      const datalist = el("datalist", { id: listId });
+      const albumInput = el("input", { type: "text", value: s.album || "", list: listId, placeholder: "Pick or type an album name",
+        onfocus: () => loadAlbums(s.onedrive_account, datalist),
+        oninput: (e) => { s.album = e.target.value; markDirty(); } });
+      return el("div", { class: "source" },
+        el("div", {}, el("label", {}, "OneDrive account"),
+          accountSelect(accounts.onedrive, s.onedrive_account, v => { s.onedrive_account = v; datalist.replaceChildren(); })),
+        el("div", {}, el("label", {}, "OneDrive album"), albumInput, datalist),
+        el("div", {}, el("label", {}, "Album ID (only if names clash)"),
+          el("input", { type: "text", value: s.album_id || "", oninput: (e) => { s.album_id = e.target.value; markDirty(); } })),
+        el("button", { class: "small danger", title: "Remove source", onclick: () => { t.sources.splice(si, 1); markDirty(); renderTargets(); } }, "✕"));
+    });
+    return el("div", { class: "target" },
+      el("div", { class: "row" },
+        el("div", { class: "grow" }, el("label", {}, "Google Photos album"),
+          el("input", { type: "text", value: t.google_album, placeholder: "e.g. Nest Hub Frame", oninput: (e) => { t.google_album = e.target.value; markDirty(); } })),
+        el("div", { style: "width: 180px" }, el("label", {}, "Google account"),
+          accountSelect(accounts.google, t.google_account, v => { t.google_account = v; })),
+        el("button", { class: "danger", style: "align-self: flex-end", onclick: () => {
+          if (!confirm(`Stop syncing "${t.google_album || "this album"}"? The Google album and its photos stay in Google Photos.`)) return;
+          cfg.targets.splice(ti, 1); markDirty(); renderTargets(); } }, "Remove")),
+      sources,
+      el("button", { class: "small", style: "margin-top: 10px", onclick: () => {
+        t.sources.push({ onedrive_account: accounts.onedrive[0]?.name || "", album: "" }); markDirty(); renderTargets(); } }, "+ Add OneDrive album"));
+  }));
+  if (!cfg.targets.length) box.replaceChildren(el("p", { class: "muted" }, "No albums yet."));
+}
+
+$("addTarget").onclick = () => {
+  cfg.targets.push({ google_account: accounts.google[0]?.name || "default", google_album: "",
+    sources: [{ onedrive_account: accounts.onedrive[0]?.name || "", album: "" }] });
+  markDirty(); renderTargets();
+};
+for (const id of ["schEnabled", "schTime", "optVideos", "optEmpty", "optClientId", "optScopes"]) $(id).addEventListener("input", markDirty);
+
+$("saveBtn").onclick = async () => {
+  cfg.schedule = { enabled: $("schEnabled").checked, time: $("schTime").value || "03:00" };
+  cfg.include_videos = $("optVideos").checked;
+  cfg.allow_empty_source = $("optEmpty").checked;
+  cfg.onedrive.client_id = $("optClientId").value.trim();
+  cfg.onedrive.scopes = $("optScopes").value.split(/[\s,]+/).filter(Boolean);
+  try {
+    await api("/api/config", cfg);
+    dirty = false; toast("Saved", "ok");
+    setTimeout(refreshStatus, 1500);  // the scheduler picks up the new time
+  } catch (e) { toast(e.message, "bad"); }
+};
+window.addEventListener("beforeunload", (e) => { if (dirty) e.preventDefault(); });
+
+// ---------- accounts ----------
+async function refreshAccounts() {
+  accounts = await api("/api/accounts");
+  const od = $("odAccounts");
+  od.replaceChildren(...accounts.onedrive.map(a => {
+    const s = a.signin;
+    let status;
+    if (s && s.state === "pending") status = el("span", { class: "pill warn" }, "waiting for code");
+    else if (a.user) status = el("span", { class: "ok" }, a.user);
+    else status = el("span", { class: "pill bad" }, "not signed in");
+    return el("div", { class: "acct" }, el("span", { class: "name" }, a.name), status, el("span", { class: "grow" }),
+      el("button", { class: "small", onclick: () => odSignin(a.name) }, a.user ? "Re-sign in" : "Sign in"),
+      a.user ? el("button", { class: "small danger", onclick: () => removeAccount("onedrive", a) }, "Sign out") : null);
+  }));
+  if (!accounts.onedrive.length) od.replaceChildren(el("p", { class: "muted" }, "No OneDrive accounts yet."));
+
+  const pending = accounts.onedrive.find(a => a.signin && a.signin.state !== "done" && (a.signin.state === "pending" || a.signin.error));
+  const n = $("odNotice");
+  if (pending && pending.signin.state === "pending") {
+    n.replaceChildren(el("div", { class: "notice" }, `Signing in "${pending.name}": open `,
+      el("a", { href: pending.signin.url, target: "_blank", rel: "noopener" }, pending.signin.url),
+      ", sign in as that person, and enter ", el("div", { class: "code" }, pending.signin.code)));
+  } else if (pending) {
+    n.replaceChildren(el("div", { class: "notice bad" }, `"${pending.name}": ${pending.signin.error}`));
+  } else n.replaceChildren();
+  if (accounts.onedrive.some(a => a.signin && a.signin.state === "pending")) setTimeout(refreshAccounts, 3000);
+
+  $("gClient").replaceChildren(accounts.google_client.present
+    ? el("span", {}, "OAuth client: ", el("code", {}, accounts.google_client.client_id.split("-")[0] + "…"))
+    : el("span", { class: "bad" }, 'No Google OAuth client yet: add one under "Google OAuth client" below.'));
+  $("gAccounts").replaceChildren(...accounts.google.map(a => el("div", { class: "acct" },
+    el("span", { class: "name" }, a.name),
+    a.signed_in ? el("span", { class: "ok" }, "signed in") : el("span", { class: "pill bad" }, "not signed in"),
+    el("span", { class: "grow" }),
+    el("button", { class: "small", onclick: () => gSignin(a.name) }, a.signed_in ? "Re-sign in" : "Sign in"),
+    a.signed_in ? el("button", { class: "small danger", onclick: () => removeAccount("google", a) }, "Sign out") : null)));
+  if (!accounts.google.length) $("gAccounts").replaceChildren(el("p", { class: "muted" }, "No Google accounts yet."));
+  // Only redraw the album form when the account dropdowns change, so polling doesn't steal focus.
+  const names = JSON.stringify([accounts.onedrive.map(a => a.name), accounts.google.map(a => a.name)]);
+  if (cfg && names !== accountNames) renderTargets();
+  accountNames = names;
+}
+let accountNames = "";
+
+async function odSignin(name) {
+  try { await api("/api/onedrive/signin", { name }); $("odNew").value = ""; delete albumCache[name]; }
+  catch (e) { $("odNotice").replaceChildren(el("div", { class: "notice bad" }, e.message)); }
+  refreshAccounts();
+}
+$("odAdd").onclick = () => { const n = $("odNew").value.trim(); if (n) odSignin(n); };
+
+async function gSignin(name) {
+  let url;
+  try { url = (await api("/api/google/signin", { name })).url; }
+  catch (e) { $("gNotice").replaceChildren(el("div", { class: "notice bad" }, e.message)); return; }
+  const input = el("input", { type: "text", placeholder: "http://localhost:8080/?state=…&code=…" });
+  const msg = el("div", {});
+  $("gNotice").replaceChildren(el("div", { class: "notice" },
+    el("div", {}, `Signing in Google account "${name}":`),
+    el("ol", {},
+      el("li", {}, el("a", { href: url, target: "_blank", rel: "noopener" }, "Open Google sign-in"), " and approve access (click through the \"unverified app\" warning)."),
+      el("li", {}, "Your browser ends on a localhost page that fails to load. That's expected. Copy that page's full address and paste it here:")),
+    el("div", { class: "row" }, el("div", { class: "grow" }, input),
+      el("button", { class: "primary", onclick: async () => {
+        try { await api("/api/google/finish", { name, url: input.value }); $("gNotice").replaceChildren(); $("gNew").value = ""; refreshAccounts(); }
+        catch (e) { msg.className = "bad"; msg.textContent = e.message; } } }, "Finish")),
+    msg));
+  refreshAccounts();
+}
+$("gAdd").onclick = () => { const n = $("gNew").value.trim(); if (n) gSignin(n); };
+
+async function removeAccount(kind, a) {
+  const warn = a.used ? " It's used by an album here, which will fail to sync until it signs in again." : "";
+  if (!confirm(`Sign out "${a.name}"? This deletes its saved sign-in.${warn}`)) return;
+  try { await api(`/api/${kind}/remove`, { name: a.name }); } catch (e) { toast(e.message, "bad"); }
+  refreshAccounts();
+}
+
+$("gClientFile").onchange = async (e) => { const f = e.target.files[0]; if (f) $("gClientJson").value = await f.text(); };
+$("gClientSave").onclick = async () => {
+  try { await api("/api/google/client", { json: $("gClientJson").value }); $("gClientJson").value = ""; toast("Google client saved", "ok"); refreshAccounts(); }
+  catch (e) { toast(e.message, "bad"); }
+};
+
+// ---------- start ----------
+(async () => {
+  try {
+    await refreshAccounts();
+    cfg = (await api("/api/config")).config;
+    renderSettings();
+  } catch (e) { toast(e.message, "bad"); }
+  refreshStatus();
+})();
+</script>
+</body>
+</html>

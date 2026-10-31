@@ -1,6 +1,9 @@
-# Copy to /config/config.yaml (on Unraid: /mnt/user/appdata/onedrive-google-sync/config.yaml).
+# Copy to /config/config.yaml (on Unraid: /mnt/user/appdata/onedrive-google-sync/config.yaml),
+# or set everything up from the web UI instead (which rewrites this file without the comments).
 
-interval_minutes: 30        # only used with the "run" command (loop); default is sync once and exit
+schedule:
+  enabled: true
+  time: "03:00"             # daily, in the container's time zone (TZ)
 include_videos: false       # Nest Hub photo frames don't need videos
 allow_empty_source: false   # if a OneDrive album comes back empty, don't strip the Google album
 
@@ -18,7 +21,7 @@ google:
 # Its contents are the union of all its sources, so several OneDrive albums, from
 # any number of OneDrive accounts, can feed one Google album.
 #
-# Account names are labels you choose. Sign each one in once:
+# Account names are labels you choose. Sign each one in once, from the web UI or with:
 #   docker run --rm -it --user 99:100 -v /mnt/user/appdata/onedrive-google-sync:/config ghcr.io/jamespwright/onedrive-google-sync auth-onedrive james
 #   docker run --rm -it --user 99:100 -v /mnt/user/appdata/onedrive-google-sync:/config ghcr.io/jamespwright/onedrive-google-sync auth-google default
 targets:

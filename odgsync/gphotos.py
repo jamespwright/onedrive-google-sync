@@ -38,21 +38,34 @@ class GoogleAccount:
         os.chmod(tmp, 0o600)
         os.replace(tmp, self.token_path)
 
-    def authenticate_interactive(self):
+    def start_auth(self) -> tuple[Flow, str]:
+        """Returns the flow (keep it for finish_auth) and the URL the user must open."""
         if not os.path.exists(self.client_secret_file):
             raise FileNotFoundError(f"Google OAuth client file not found: {self.client_secret_file}")
         flow = Flow.from_client_secrets_file(self.client_secret_file, scopes=SCOPES, redirect_uri=REDIRECT_URI)
         url, _ = flow.authorization_url(access_type="offline", prompt="consent")
-        print("1. Open this URL in a browser and approve access:\n")
-        print(url, "\n")
-        print("2. The browser will end on a localhost page that fails to load. That is expected.")
-        print("   Copy the full URL from the address bar and paste it here.\n")
-        pasted = input("URL: ").strip()
+        return flow, url
+
+    def finish_auth(self, flow: Flow, pasted: str):
+        """pasted is the localhost URL the browser ended on, or just its code parameter."""
+        pasted = pasted.strip()
         code = parse_qs(urlparse(pasted).query).get("code", [pasted])[0]
         flow.fetch_token(code=code)
         if not flow.credentials.refresh_token:
             raise RuntimeError("Google did not return a refresh token; revoke the app's access and retry")
         self._save(flow.credentials)
+
+    @property
+    def signed_in(self) -> bool:
+        return os.path.exists(self.token_path)
+
+    def authenticate_interactive(self):
+        flow, url = self.start_auth()
+        print("1. Open this URL in a browser and approve access:\n")
+        print(url, "\n")
+        print("2. The browser will end on a localhost page that fails to load. That is expected.")
+        print("   Copy the full URL from the address bar and paste it here.\n")
+        self.finish_auth(flow, input("URL: "))
 
     @property
     def session(self) -> AuthorizedSession:

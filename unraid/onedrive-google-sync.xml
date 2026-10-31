@@ -6,10 +6,12 @@
   <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Overview>One-way sync of OneDrive albums (from one or more Microsoft accounts) into Google Photos albums, e.g. to feed a Nest Hub photo frame. Runs one sync and exits; start it again (e.g. docker start -a onedrive-google-sync from a User Script) to resync. Sign in each account once from the Unraid terminal - see the README.</Overview>
+  <Overview>One-way sync of OneDrive albums (from one or more Microsoft accounts) into Google Photos albums, e.g. to feed a Nest Hub photo frame. Syncs daily at a time you choose, with a web UI for settings, account sign-in and a Sync now button.</Overview>
   <Category>Backup: Tools:</Category>
-  <ExtraParams>--user 99:100</ExtraParams>
+  <WebUI>http://[IP]:[PORT:8765]/</WebUI>
+  <ExtraParams>--user 99:100 --restart unless-stopped</ExtraParams>
   <Config Name="Config" Target="/config" Default="/mnt/user/appdata/onedrive-google-sync" Mode="rw" Description="config.yaml, tokens and sync state" Type="Path" Display="always" Required="true">/mnt/user/appdata/onedrive-google-sync</Config>
+  <Config Name="Web UI port" Target="8765" Default="8765" Mode="tcp" Description="Web UI" Type="Port" Display="always" Required="true">8765</Config>
+  <Config Name="Web UI password" Target="WEB_PASSWORD" Default="" Mode="" Description="Optional. If set, the web UI asks for it (any username)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Log level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="DEBUG, INFO, WARNING" Type="Variable" Display="advanced" Required="false">INFO</Config>
-  <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="Timezone for log timestamps" Type="Variable" Display="advanced" Required="false">Etc/UTC</Config>
 </Container>

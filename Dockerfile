@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# tzdata so TZ (which Unraid passes to every container) sets the schedule's time zone.
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     CONFIG_DIR=/config
@@ -12,6 +15,7 @@ COPY odgsync ./odgsync
 COPY config.example.yaml .
 
 VOLUME /config
+EXPOSE 8765
 ENTRYPOINT ["python", "-m", "odgsync"]
-# One sync, then exit. Use "run" instead to keep syncing on a loop.
-CMD ["sync"]
+# Web UI plus a daily scheduled sync. Use "sync" instead to sync once and exit.
+CMD ["serve"]

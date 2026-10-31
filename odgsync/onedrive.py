@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -11,6 +12,16 @@ log = logging.getLogger(__name__)
 GRAPH = "https://graph.microsoft.com/v1.0"
 # Bundles (albums) only exist on personal OneDrive, so sign in against consumer accounts.
 AUTHORITY = "https://login.microsoftonline.com/consumers"
+
+
+def cached_username(cache_path: str) -> str | None:
+    """Who a token cache belongs to, read from the file without contacting Microsoft."""
+    try:
+        with open(cache_path, encoding="utf-8") as f:
+            accounts = json.load(f).get("Account") or {}
+    except (OSError, ValueError):
+        return None
+    return next((a.get("username") for a in accounts.values()), None)
 
 
 @dataclass
@@ -43,16 +54,24 @@ class OneDriveAccount:
         os.chmod(tmp, 0o600)
         os.replace(tmp, self.cache_path)
 
-    def authenticate_interactive(self) -> str:
+    def start_device_flow(self) -> dict:
         flow = self.app.initiate_device_flow(scopes=self.scopes)
         if "user_code" not in flow:
             raise RuntimeError(f"Could not start device flow: {flow.get('error_description', flow)}")
-        print(flow["message"], flush=True)
+        return flow
+
+    def finish_device_flow(self, flow: dict) -> str:
+        """Blocks until the user enters the code (or it expires); returns the signed-in username."""
         result = self.app.acquire_token_by_device_flow(flow)
         if "access_token" not in result:
             raise RuntimeError(f"Sign-in failed: {result.get('error_description', result)}")
         self._save_cache()
         return result.get("id_token_claims", {}).get("preferred_username", "unknown")
+
+    def authenticate_interactive(self) -> str:
+        flow = self.start_device_flow()
+        print(flow["message"], flush=True)
+        return self.finish_device_flow(flow)
 
     def _token(self) -> str:
         accounts = self.app.get_accounts()
