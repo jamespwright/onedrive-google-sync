@@ -415,13 +415,20 @@ class Handler(BaseHTTPRequestHandler):
         self._error(404, "Not found")
 
 
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # Browsers drop idle keep-alive connections all the time; that's not worth a traceback.
+        log.debug("connection from %s failed", client_address, exc_info=True)
+
+
 def serve(port: int, password: str | None) -> Service:
     """Starts the scheduler and web server in background threads and returns the service."""
     service = Service()
     logging.getLogger().addHandler(service.logs)
     handler = type("BoundHandler", (Handler,), {"service": service, "password": password})
-    server = ThreadingHTTPServer(("0.0.0.0", port), handler)
-    server.daemon_threads = True
+    server = Server(("0.0.0.0", port), handler)
     threading.Thread(target=service.scheduler, daemon=True).start()
     threading.Thread(target=server.serve_forever, daemon=True).start()
     service.server = server

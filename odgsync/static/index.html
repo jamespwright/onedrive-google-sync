@@ -324,7 +324,9 @@ async function refreshAccounts() {
 
   const pending = accounts.onedrive.find(a => a.signin && a.signin.state !== "done" && (a.signin.state === "pending" || a.signin.error));
   const n = $("odNotice");
-  if (pending && pending.signin.state === "pending") {
+  if (odError) {
+    n.replaceChildren(el("div", { class: "notice bad" }, odError));
+  } else if (pending && pending.signin.state === "pending") {
     n.replaceChildren(el("div", { class: "notice" }, `Signing in "${pending.name}": open `,
       el("a", { href: pending.signin.url, target: "_blank", rel: "noopener" }, pending.signin.url),
       ", sign in as that person, and enter ", el("div", { class: "code" }, pending.signin.code)));
@@ -350,17 +352,27 @@ async function refreshAccounts() {
 }
 let accountNames = "";
 
+const NAME_HINT = "Account names are short labels such as partner or mum: letters, digits, '.', '_' and '-' only (no spaces or @).";
+let odError = "";
 async function odSignin(name) {
+  odError = "";
+  $("odNotice").replaceChildren(el("div", { class: "notice" }, el("span", { class: "spin" }), "Starting sign-in…"));
   try { await api("/api/onedrive/signin", { name }); $("odNew").value = ""; delete albumCache[name]; }
-  catch (e) { $("odNotice").replaceChildren(el("div", { class: "notice bad" }, e.message)); }
+  catch (e) { odError = e.message.startsWith("Account names") ? NAME_HINT : e.message; }
   refreshAccounts();
 }
-$("odAdd").onclick = () => { const n = $("odNew").value.trim(); if (n) odSignin(n); };
+$("odAdd").onclick = () => {
+  const n = $("odNew").value.trim();
+  if (n) return odSignin(n);
+  odError = "Type a name for the new account first, e.g. partner.";
+  refreshAccounts();
+};
+$("odNew").addEventListener("keydown", (e) => { if (e.key === "Enter") $("odAdd").click(); });
 
 async function gSignin(name) {
   let url;
   try { url = (await api("/api/google/signin", { name })).url; }
-  catch (e) { $("gNotice").replaceChildren(el("div", { class: "notice bad" }, e.message)); return; }
+  catch (e) { $("gNotice").replaceChildren(el("div", { class: "notice bad" }, e.message.startsWith("Account names") ? NAME_HINT : e.message)); return; }
   const input = el("input", { type: "text", placeholder: "http://localhost:8080/?state=…&code=…" });
   const msg = el("div", {});
   $("gNotice").replaceChildren(el("div", { class: "notice" },
@@ -375,7 +387,12 @@ async function gSignin(name) {
     msg));
   refreshAccounts();
 }
-$("gAdd").onclick = () => { const n = $("gNew").value.trim(); if (n) gSignin(n); };
+$("gAdd").onclick = () => {
+  const n = $("gNew").value.trim();
+  if (n) return gSignin(n);
+  $("gNotice").replaceChildren(el("div", { class: "notice bad" }, "Type a name for the account first, e.g. default."));
+};
+$("gNew").addEventListener("keydown", (e) => { if (e.key === "Enter") $("gAdd").click(); });
 
 async function removeAccount(kind, a) {
   const warn = a.used ? " It's used by an album here, which will fail to sync until it signs in again." : "";
