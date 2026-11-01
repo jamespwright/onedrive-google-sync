@@ -65,18 +65,30 @@ class Syncer:
 
         # Gather everything first: if any source fails we abort before touching Google,
         # rather than treating the missing photos as removals.
-        desired: dict[str, tuple[OneDriveAccount, Photo]] = {}
+        found: list[tuple[OneDriveAccount, Photo]] = []
         empty_sources = []
         for src in target.sources:
             od = self.onedrive(src.onedrive_account)
             photos = od.album_photos(od.resolve_album(src.album, src.album_id), self.cfg.include_videos)
             if not photos:
                 empty_sources.append(src.label)
-            for p in photos:
-                desired[p.key] = (od, p)
+            found.extend((od, p) for p in photos)
 
         album_id = self.ensure_album(google, title)
         current = self.state.members(album_id)
+
+        # Google Photos dedupes by content and rejects the second copy of a file in one
+        # batchCreate, so keep one copy per hash, preferring one that is already synced.
+        found.sort(key=lambda op: op[1].key not in current)
+        desired: dict[str, tuple[OneDriveAccount, Photo]] = {}
+        hashes = set()
+        for od, p in found:
+            if p.content_hash and p.content_hash in hashes:
+                continue
+            hashes.add(p.content_hash)
+            desired[p.key] = (od, p)
+        if len(desired) < len(found):
+            log.info("[%s] skipping %d duplicate file(s)", title, len(found) - len(desired))
         to_remove = sorted(current - desired.keys())
         to_add = [k for k in desired if k not in current]
         log.info("[%s] %d in OneDrive, %d synced, %d to add, %d to remove",

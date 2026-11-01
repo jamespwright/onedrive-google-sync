@@ -30,6 +30,7 @@ class Photo:
     name: str
     mime: str
     content_url: str
+    content_hash: str | None = None  # same bytes, same hash, even across drives
 
 
 class OneDriveAccount:
@@ -129,7 +130,9 @@ class OneDriveAccount:
             else:
                 item_id = item["id"]
                 content_url = f"{GRAPH}/me/drive/items/{item_id}/content"
-            photos.append(Photo(f"{self.name}:{item_id}", item.get("name", item_id), mime, content_url))
+            hashes = item["file"].get("hashes") or ((remote or {}).get("file") or {}).get("hashes") or {}
+            content_hash = hashes.get("quickXorHash") or hashes.get("sha1Hash")
+            photos.append(Photo(f"{self.name}:{item_id}", item.get("name", item_id), mime, content_url, content_hash))
         return photos
 
     def download(self, photo: Photo) -> bytes:
